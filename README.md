@@ -151,9 +151,47 @@ Các thành phần backend, worker, database, vector database, Redis và object 
 
 Các secret như API key của LLM, thông tin database, object storage và dịch vụ TTS cần được cung cấp qua biến môi trường hoặc secret manager; không commit trực tiếp vào repository.
 
+## Chạy local bằng Docker
+
+Repository hiện có sẵn scaffold cho ba service cơ bản:
+
+| Service | Cổng host | Cổng trong container |
+| --- | ---: | ---: |
+| Frontend | `13000` | `3000` |
+| Backend | `18080` | `8000` |
+| PostgreSQL | `15432` | `5432` |
+
+Khởi động toàn bộ stack:
+
+```bash
+docker compose up --build -d
+```
+
+Truy cập các service:
+
+- Frontend: <http://localhost:13000>
+- Backend: <http://localhost:18080>
+- Backend health check: <http://localhost:18080/health>
+- Kiểm tra kết nối PostgreSQL: <http://localhost:18080/db-check>
+
+Xem log hoặc dừng stack:
+
+```bash
+docker compose logs -f
+docker compose down
+```
+
+Các cổng host có thể đổi qua biến môi trường, ví dụ:
+
+```bash
+BACKEND_PORT=18081 FRONTEND_PORT=13001 POSTGRES_PORT=15433 docker compose up --build -d
+```
+
+> PostgreSQL sử dụng volume `postgres_data` để giữ dữ liệu khi container được recreate. Mật khẩu mặc định trong compose chỉ dành cho môi trường local.
+
 ## Trạng thái dự án
 
-Hiện repository đang ở giai đoạn khởi tạo và định hình kiến trúc. Tài liệu đặc tả đã xác định pipeline, các nhóm chức năng và tech stack mục tiêu; mã nguồn, file cấu hình triển khai và hướng dẫn chạy local sẽ được bổ sung trong các giai đoạn tiếp theo.
+Hiện repository đang ở giai đoạn khởi tạo và định hình kiến trúc. Đã có Docker scaffold cho frontend, backend và PostgreSQL cùng các endpoint kiểm tra cơ bản; các module nghiệp vụ như collector, NLP/LLM pipeline, RAG và video generation sẽ được phát triển tiếp theo.
 
 ## Lộ trình phát triển đề xuất
 
