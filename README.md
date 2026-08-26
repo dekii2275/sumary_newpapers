@@ -206,6 +206,11 @@ Hiện repository đang ở giai đoạn khởi tạo và định hình kiến t
 - [ ] Xây dựng pipeline TTS, subtitle và video rendering.
 - [ ] Bổ sung monitoring, tracing, test và CI/CD.
 
+## Airflow scheduler
+
+Hướng dẫn cấu hình và chạy Airflow cho crawler Step 1 nằm tại
+[`docs/airflow.md`](docs/airflow.md).
+
 ## License
 
 Dự án được phát hành theo [MIT License](LICENSE).
