@@ -82,7 +82,7 @@ scripts/
 
 ## 3. Luồng Xử lý Dữ liệu Chi tiết (End-to-End Workflow)
 
-![Sơ đồ Luồng Xử lý Dữ liệu Crawler](../docs/images/crawler_workflow.png)
+![Sơ đồ Luồng Xử lý Dữ liệu Crawler](https://github.com/user-attachments/assets/1ca52388-23da-4ae8-bdef-2d2180dfcd71)
 
 ---
 
