@@ -1,0 +1,40 @@
+source_id: 2
+source_name: "cafef"
+display_name: "CafeF"
+domains:
+  - "cafef.vn"
+
+fetcher:
+  type: "http"
+  timeout: 15
+
+parser:
+  type: "declarative"
+  selectors:
+    title:
+      - "h1.title"
+      - "h1.title-detail"
+      - "h1"
+      - "meta[property='og:title']@content"
+    author:
+      - ".author"
+      - ".author-info"
+      - "span.author"
+    published_at:
+      - "meta[property='article:published_time']@content"
+      - "time[datetime]@datetime"
+      - ".date-time"
+      - ".date"
+    thumbnail_url:
+      - "meta[property='og:image']@content"
+      - "meta[name='twitter:image']@content"
+    content_paragraphs:
+      - ".detail-content p"
+      - ".content p"
+      - "article p"
+  clean_rules:
+    strip_elements:
+      - ".link-content-footer"
+      - ".box-tag"
+      - "script"
+      - "style"

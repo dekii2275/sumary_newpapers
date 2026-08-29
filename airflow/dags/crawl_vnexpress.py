@@ -1,4 +1,4 @@
-"""Schedule the Step 1 VnExpress crawler and persist each raw crawl record."""
+"""DAG Airflow định lịch thu thập tin tức VnExpress (Step 1) và lưu dữ liệu thô vào bảng rawdata."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from airflow import DAG
 from airflow.exceptions import AirflowException
 from airflow.operators.python import PythonOperator
 
+# Thêm đường dẫn thư mục scripts của dự án vào sys.path trong môi trường Airflow
 sys.path.insert(0, "/opt/project/scripts")
 
 from crawl_to_db import (  # noqa: E402
@@ -23,6 +24,7 @@ from crawl_to_db import (  # noqa: E402
 
 
 def _configured_urls() -> list[str]:
+    """Đọc danh sách các URL bài viết được cấu hình từ biến môi trường CRAWL_URLS (ngăn cách bằng dấu phẩy)."""
     return [
         url.strip()
         for url in os.getenv("CRAWL_URLS", "").split(",")
@@ -31,11 +33,12 @@ def _configured_urls() -> list[str]:
 
 
 def run_crawler_batch() -> None:
+    """Thực thi cào hàng loạt danh sách URL đã cấu hình và lưu vào CSDL PostgreSQL."""
     urls = _configured_urls()
     if not urls:
         raise AirflowException(
-            "CRAWL_URLS is empty. Set it to one or more comma-separated "
-            "article URLs before enabling the DAG."
+            "Biến môi trường CRAWL_URLS đang rỗng. Hãy cấu hình một hoặc nhiều "
+            "URL bài viết (ngăn cách bởi dấu phẩy) trước khi kích hoạt DAG."
         )
 
     source_id = int(os.getenv("CRAWL_SOURCE_ID", "1"))
@@ -46,7 +49,7 @@ def run_crawler_batch() -> None:
     results: list[dict[str, object]] = []
     failures: list[str] = []
 
-    # One browser session is reused for the sequential Step 1 batch.
+    # Tái sử dụng một phiên trình duyệt Selenium duy nhất cho toàn bộ danh sách URL trong batch để tối ưu hiệu năng
     fetcher = SeleniumFetcher(timeout=timeout)
     try:
         for url in urls:
@@ -68,12 +71,12 @@ def run_crawler_batch() -> None:
 
     print(json.dumps(results, ensure_ascii=False))
     if failures:
-        raise AirflowException("One or more URLs failed: " + "; ".join(failures))
+        raise AirflowException("Một hoặc nhiều URL cào thất bại: " + "; ".join(failures))
 
 
 with DAG(
     dag_id="crawl_vnexpress_step1",
-    description="Crawl configured VnExpress articles into the rawdata table",
+    description="Cào các bài báo VnExpress đã cấu hình và lưu vào bảng rawdata",
     schedule="0 */6 * * *",
     start_date=pendulum.datetime(2026, 1, 1, tz="UTC"),
     catchup=False,
@@ -90,3 +93,4 @@ with DAG(
         task_id="crawl_articles",
         python_callable=run_crawler_batch,
     )
+
