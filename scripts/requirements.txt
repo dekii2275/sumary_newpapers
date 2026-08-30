@@ -1,0 +1,12 @@
+# Core Web Scraping & Parsing
+beautifulsoup4>=4.12.0
+lxml>=5.2.0
+trafilatura>=1.8.0
+
+# HTTP & Browser Automation
+requests>=2.31.0
+selenium>=4.20.0
+
+# Config & Data Validation
+pydantic>=2.7.0
+PyYAML>=6.0.1
