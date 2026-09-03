@@ -1,8 +1,15 @@
 source_id: 1
 source_name: "vnexpress"
 display_name: "VnExpress"
+channel_type: "rss"
 domains:
   - "vnexpress.net"
+
+rss_feeds:
+  - "https://vnexpress.net/rss/khoa-hoc-cong-nghe.rss"
+
+listing_urls:
+  - "https://vnexpress.net/so-hoa/cong-nghe"
 
 fetcher:
   type: "http"

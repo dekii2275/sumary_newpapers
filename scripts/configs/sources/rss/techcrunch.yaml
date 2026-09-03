@@ -1,8 +1,16 @@
 source_id: 3
 source_name: "techcrunch"
 display_name: "TechCrunch"
+channel_type: "rss"
 domains:
   - "techcrunch.com"
+
+rss_feeds:
+  - "https://techcrunch.com/feed/"
+  - "https://techcrunch.com/category/artificial-intelligence/feed/"
+
+listing_urls:
+  - "https://techcrunch.com/category/artificial-intelligence/"
 
 fetcher:
   type: "http"

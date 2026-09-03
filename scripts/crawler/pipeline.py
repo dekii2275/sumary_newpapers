@@ -23,7 +23,13 @@ except ImportError:
 from .utils import normalize_url, save_artifacts, find_existing_artifact
 from .registry import registry
 from .fetchers.base import BaseFetcher
+from .fetchers import selenium_fetcher
+
+# Cho phép test mock ở crawler.pipeline.SeleniumFetcher
+SeleniumFetcher = getattr(selenium_fetcher, "SeleniumFetcher", None)
 from .parsers.generic_parser import GenericParser
+
+
 
 
 def get_fetcher_for_source(source_name: str, timeout: int = 20) -> BaseFetcher:
@@ -59,6 +65,12 @@ def crawl_article(
     timeout: int | None = None,
     fetcher: BaseFetcher | None = None,
     force: bool = False,
+    discovery_method: str = "direct",
+    discovery_metadata: dict[str, object] | None = None,
+    fallback_title: str | None = None,
+    fallback_published_at: str | None = None,
+    fallback_author: str | None = None,
+    fallback_thumbnail: str | None = None,
     **kwargs,
 ) -> dict[str, object]:
     """Thực thi toàn bộ luồng cào 1 bài viết: tải trang, trích xuất, lưu artifact cục bộ.
@@ -69,6 +81,12 @@ def crawl_article(
         timeout: Thời gian timeout tải trang (nếu None sẽ lấy từ cấu hình nguồn).
         fetcher: Thể hiện fetcher dùng lại (nếu có, ví dụ khi cào theo lô).
         force: Nếu True, ép buộc cào lại bài viết dù đã từng cào trước đó (mặc định: False).
+        discovery_method: Phương thức khám phá ('rss', 'api', 'listing', 'direct').
+        discovery_metadata: Dữ liệu phát hiện ban đầu từ RSS / API.
+        fallback_title: Tiêu đề bổ trợ nếu HTML không bóc tách được.
+        fallback_published_at: Ngày đăng bổ trợ từ feed/API nếu HTML thiếu.
+        fallback_author: Tác giả bổ trợ từ feed/API nếu HTML thiếu.
+        fallback_thumbnail: Ảnh đại diện bổ trợ nếu HTML thiếu.
         
     Returns:
         dict[str, object]: Từ điển metadata bài viết được lưu trữ trong crawl_data/metadata/.
@@ -88,10 +106,9 @@ def crawl_article(
         if existing_artifact:
             return existing_artifact
 
-
-    response: dict[str, str | None] = {}
+    response: dict[str, object] = {}
     html = ""
-    article: dict[str, str | None] = {}
+    article: dict[str, object] = {}
     owns_fetcher = fetcher is None
     crawl_status = "UNKNOWN_ERROR"
     error_message: str | None = None
@@ -102,8 +119,31 @@ def crawl_article(
             fetcher = registry.create_fetcher(config, timeout=effective_timeout)
             
         response = fetcher.fetch(normalized_url)
-        html = response.get("html") or ""
-        final_url = response.get("final_url") or normalized_url
+        html = str(response.get("html") or "")
+        final_url = str(response.get("final_url") or normalized_url)
+        http_status = response.get("http_status")
+
+        # Cơ chế Adaptive Fallback sang Selenium nếu HTTP bị 403 hoặc trả về HTML rỗng
+        if (not html.strip() or http_status == 403) and config.fetcher.type == "http":
+            try:
+                from unittest.mock import MagicMock
+                sf_cls = selenium_fetcher.SeleniumFetcher
+                if isinstance(SeleniumFetcher, MagicMock):
+                    sf_cls = SeleniumFetcher
+                sf_instance = sf_cls(timeout=effective_timeout)
+
+
+                try:
+                    selenium_resp = sf_instance.fetch(normalized_url)
+                    if selenium_resp.get("html") and str(selenium_resp.get("html")).strip():
+                        response = selenium_resp
+                        html = str(selenium_resp.get("html"))
+                        final_url = str(selenium_resp.get("final_url") or final_url)
+                finally:
+                    sf_instance.close()
+            except Exception:
+                pass
+
 
         # Kiểm tra nếu trang trả về mã HTML rỗng
         if not html.strip():
@@ -114,14 +154,27 @@ def crawl_article(
                 final_url=final_url,
                 fetched_at=fetched_at,
                 article={},
+                http_status=http_status if isinstance(http_status, int) else None,
                 crawl_status="EMPTY_HTML",
                 error="Nội dung HTML trả về bị rỗng",
+                discovery_method=discovery_method,
+                discovery_metadata=discovery_metadata,
             )
 
         # 4. Phân tích và bóc tách dữ liệu bài báo qua GenericParser
         parser = registry.create_parser(config)
         article = parser.parse(html)
-        
+
+        # Hợp nhất metadata từ RSS/API nếu HTML thiếu (Graceful Fallback)
+        if not article.get("title") and fallback_title:
+            article["title"] = fallback_title
+        if not article.get("published_at") and fallback_published_at:
+            article["published_at"] = fallback_published_at
+        if not article.get("author") and fallback_author:
+            article["author"] = fallback_author
+        if not article.get("thumbnail_url") and fallback_thumbnail:
+            article["thumbnail_url"] = fallback_thumbnail
+
         crawl_status = "SUCCESS" if article.get("content") else "CONTENT_NOT_FOUND"
         error_message = None if crawl_status == "SUCCESS" else "Không tìm thấy nội dung bài viết phù hợp"
         
@@ -133,8 +186,11 @@ def crawl_article(
             final_url=final_url,
             fetched_at=fetched_at,
             article=article,
+            http_status=http_status if isinstance(http_status, int) else None,
             crawl_status=crawl_status,
             error=error_message,
+            discovery_method=discovery_method,
+            discovery_metadata=discovery_metadata,
         )
         return metadata
 
@@ -156,9 +212,12 @@ def crawl_article(
         html="",
         source_name=effective_source_name,
         url=normalized_url,
-        final_url=response.get("final_url") if response else normalized_url,
+        final_url=str(response.get("final_url") or normalized_url),
         fetched_at=fetched_at,
-        article={},
+        article=article or {},
         crawl_status=crawl_status,
         error=error_message,
+        discovery_method=discovery_method,
+        discovery_metadata=discovery_metadata,
     )
+

@@ -10,3 +10,6 @@ selenium>=4.20.0
 # Config & Data Validation
 pydantic>=2.7.0
 PyYAML>=6.0.1
+
+# Feed & RSS/Atom Parsing
+feedparser>=6.0.10

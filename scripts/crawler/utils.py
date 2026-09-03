@@ -77,10 +77,12 @@ def save_artifacts(
     url: str,
     final_url: str | None,
     fetched_at: datetime,
-    article: dict[str, str | None],
+    article: dict[str, object],
     http_status: int | None = None,
     crawl_status: str = "SUCCESS",
     error: str | None = None,
+    discovery_method: str = "direct",
+    discovery_metadata: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Nén lưu mã nguồn HTML thô dạng Gzip (.html.gz) và lưu metadata JSON vào thư mục crawl_data/.
     
@@ -94,10 +96,12 @@ def save_artifacts(
         url: URL bài viết ban đầu.
         final_url: URL cuối cùng sau khi chuyển hướng.
         fetched_at: Thời điểm tải trang.
-        article: Từ điển chứa các trường metadata đã bóc tách (title, author, content, published_at, thumbnail_url).
+        article: Từ điển chứa các trường metadata đã bóc tách (title, author, content, published_at, thumbnail_url...).
         http_status: Mã phản hồi HTTP (nếu có).
         crawl_status: Trạng thái cào ('SUCCESS', 'CONTENT_NOT_FOUND', 'EMPTY_HTML', 'TIMEOUT', 'BLOCKED', 'ERROR').
         error: Thông báo lỗi (nếu có).
+        discovery_method: Phương thức khám phá ('rss', 'api', 'listing', 'direct').
+        discovery_metadata: Dữ liệu bổ trợ ban đầu thu thập từ RSS hoặc API.
         
     Returns:
         dict[str, object]: Dữ liệu metadata hoàn chỉnh đã được lưu trữ.
@@ -118,13 +122,18 @@ def save_artifacts(
         # Ghi nén file HTML thô (.html.gz)
         with gzip.open(raw_path, "wt", encoding="utf-8") as file:
             file.write(html)
-        raw_html_path = raw_path.relative_to(PROJECT_ROOT).as_posix()
+        try:
+            raw_html_path = raw_path.relative_to(PROJECT_ROOT).as_posix()
+        except ValueError:
+            raw_html_path = raw_path.as_posix()
+
 
     # Tạo bản ghi metadata theo chuẩn định dạng JSON
     metadata = {
         "source": source_name,
         "url": url,
         "final_url": final_url or url,
+        "canonical_url": article.get("canonical_url"),
         "title": article.get("title"),
         "author": article.get("author"),
         "published_at": article.get("published_at"),
@@ -133,6 +142,9 @@ def save_artifacts(
         "raw_html_path": raw_html_path,
         "http_status": http_status,
         "crawl_status": crawl_status,
+        "discovery_method": discovery_method,
+        "discovery_metadata": discovery_metadata or {},
+        "quality_flags": article.get("quality_flags") or [],
         "fetched_at": fetched_at.isoformat(),
         "error": error,
     }
@@ -144,6 +156,7 @@ def save_artifacts(
     )
     
     return metadata
+
 
 
 def find_existing_artifact(url: str, source_name: str | None = None) -> dict[str, object] | None:

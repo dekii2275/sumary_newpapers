@@ -33,6 +33,10 @@ class SourceRegistry:
                 # Lưu tên miền chữ thường để tra cứu không phân biệt hoa thường
                 self._domain_to_source[domain.lower().strip()] = source_name
 
+    def get_all_configs(self) -> dict[str, SourceConfig]:
+        """Lấy toàn bộ các cấu hình nguồn đã đăng ký."""
+        return self._configs
+
     def get_config_by_name(self, source_name: str) -> SourceConfig | None:
         """Tìm cấu hình nguồn theo tên định danh (source_name)."""
         return self._configs.get(source_name.lower().strip())

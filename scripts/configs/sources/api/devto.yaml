@@ -1,0 +1,50 @@
+source_id: 101
+source_name: "devto"
+display_name: "DEV Community (AI News)"
+channel_type: "api"
+domains:
+  - "dev.to"
+
+api:
+  url: "https://dev.to/api/articles"
+  method: "GET"
+  params:
+    tag: "ai"
+    top: 1
+    per_page: 15
+  field_mapping:
+    url: "url"
+    title: "title"
+    published_at: "published_at"
+    summary: "description"
+    author: "user.name"
+    thumbnail_url: "cover_image"
+  rate_limit_delay: 1.0
+
+fetcher:
+  type: "http"
+  timeout: 15
+
+parser:
+  type: "declarative"
+  selectors:
+    title:
+      - "h1"
+      - "meta[property='og:title']@content"
+    author:
+      - "a.crayons-link--secondary.fw-bold"
+      - "meta[name='author']@content"
+    published_at:
+      - "meta[property='article:published_time']@content"
+      - "time[datetime]@datetime"
+    thumbnail_url:
+      - "meta[property='og:image']@content"
+    content_paragraphs:
+      - "#article-body p"
+      - ".crayons-article__body p"
+      - "article p"
+  clean_rules:
+    strip_elements:
+      - ".actions"
+      - "script"
+      - "style"

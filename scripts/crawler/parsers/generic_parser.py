@@ -158,12 +158,34 @@ class GenericParser(BaseParser):
             except Exception:
                 pass
 
+        # 6. Trích xuất Canonical URL từ thẻ link
+        canonical_url = None
+        canonical_tag = soup.find("link", rel=lambda val: val and "canonical" in val.lower())
+        if canonical_tag and canonical_tag.has_attr("href"):
+            canonical_url = clean_text(canonical_tag["href"])
+
+        # 7. Đánh giá chất lượng dữ liệu (Data Quality Flags)
+        quality_flags: list[str] = []
+        if not title:
+            quality_flags.append("missing_title")
+        if not author:
+            quality_flags.append("missing_author")
+        if not published_at:
+            quality_flags.append("missing_published_at")
+        if not content:
+            quality_flags.append("missing_content")
+        elif len(content) < 150:
+            quality_flags.append("short_content")
+
         return {
             "title": title,
             "author": author,
             "published_at": published_at,
             "content": content,
             "thumbnail_url": thumbnail_url,
+            "canonical_url": canonical_url,
+            "quality_flags": quality_flags,
         }
+
 
 

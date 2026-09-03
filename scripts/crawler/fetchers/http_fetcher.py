@@ -5,49 +5,80 @@ from .base import BaseFetcher
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 
+
 class HttpFetcher(BaseFetcher):
     """Công cụ tải trang web gọn nhẹ qua giao thức HTTP tiêu chuẩn.
     
-    Rất lý tưởng cho các trang báo có nội dung tĩnh (Server-Side Rendered như VnExpress, CafeF, TechCrunch)
-    giúp tăng tốc độ cào gấp 5-10 lần và tiết kiệm RAM so với việc mở trình duyệt Selenium.
+    Tích hợp HTTPAdapter với cơ chế Retry tự động (Exponential Backoff) và hỗ trợ
+    theo dõi mã phản hồi HTTP cũng như URL chuyển hướng (Canonical Redirect).
     """
 
     def __init__(self, timeout: int = 20) -> None:
         """Khởi tạo HttpFetcher với thời gian timeout chỉ định (giây)."""
         self.timeout = timeout
+        self._session = None
 
-    def fetch(self, url: str) -> dict[str, str | None]:
-        """Tải mã nguồn HTML thô bằng requests hoặc urllib.
+    def _get_session(self):
+        if self._session is None:
+            import requests
+            from urllib3.util import Retry
+            from requests.adapters import HTTPAdapter
+
+            session = requests.Session()
+            retries = Retry(
+                total=3,
+                backoff_factor=1.5,
+                status_forcelist=[500, 502, 503, 504],
+                raise_on_status=False,
+            )
+            adapter = HTTPAdapter(max_retries=retries)
+            session.mount("http://", adapter)
+            session.mount("https://", adapter)
+            self._session = session
+        return self._session
+
+    def fetch(self, url: str) -> dict[str, object]:
+        """Tải mã nguồn HTML thô bằng requests với Retry Policy.
         
         Args:
             url: Đường dẫn URL bài viết.
             
         Returns:
-            dict[str, str | None]: Từ điển chứa 'final_url' và 'html'.
+            dict[str, object]: Từ điển chứa 'final_url', 'html', 'http_status'.
         """
         try:
-            import requests
+            session = self._get_session()
             headers = {
                 "User-Agent": USER_AGENT,
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
                 "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
+                "Sec-Ch-Ua": '"Chromium";v="128", "Not;A=Brand";v="24"',
+                "Sec-Ch-Ua-Mobile": "?0",
+                "Sec-Ch-Ua-Platform": '"Windows"',
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
+                "Upgrade-Insecure-Requests": "1",
             }
-            resp = requests.get(url, headers=headers, timeout=self.timeout)
+            resp = session.get(url, headers=headers, timeout=self.timeout)
             resp.encoding = resp.apparent_encoding or "utf-8"
             return {
                 "final_url": resp.url,
                 "html": resp.text,
+                "http_status": resp.status_code,
             }
-        except ImportError:
-            import urllib.request
-            req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-            with urllib.request.urlopen(req, timeout=self.timeout) as response:
-                html = response.read().decode("utf-8", errors="replace")
-                return {
-                    "final_url": response.geturl(),
-                    "html": html,
-                }
+        except Exception as exc:
+            return {
+                "final_url": url,
+                "html": "",
+                "http_status": None,
+                "error": str(exc),
+            }
 
     def close(self) -> None:
-        """Không có tài nguyên tiến trình chạy nền cần đóng."""
-        pass
+        """Đóng session khi hoàn tất."""
+        if self._session is not None:
+            self._session.close()
+            self._session = None
+
