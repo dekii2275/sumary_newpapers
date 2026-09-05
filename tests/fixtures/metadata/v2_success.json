@@ -1,0 +1,18 @@
+{
+  "schema_version": 2,
+  "source": "vnexpress",
+  "url": "https://vnexpress.net/example.html",
+  "final_url": "https://vnexpress.net/example.html",
+  "title": "Example article",
+  "author": null,
+  "published_at": null,
+  "content": "Article content.",
+  "thumbnail_url": null,
+  "raw_object_key": "crawl_data/raw/vnexpress/runs/example.html.gz",
+  "raw_payload_type": "text/html",
+  "raw_content_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "status": "SUCCESS",
+  "http_status": null,
+  "crawl_run_id": "00000000-0000-0000-0000-000000000001",
+  "fetched_at": "2026-08-26T00:00:00+00:00"
+}
