@@ -3,9 +3,9 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-news_db}
-      POSTGRES_USER: ${POSTGRES_USER:-news_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-news_password_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-tech_news_db}
+      POSTGRES_USER: ${POSTGRES_USER:-tech_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-news_summary}
     ports:
       - "${POSTGRES_PORT:-15432}:5432"
     volumes:
@@ -22,7 +22,7 @@ services:
       context: ./backend
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-news_user}:${POSTGRES_PASSWORD:-news_password_dev}@postgres:5432/${POSTGRES_DB:-news_db}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tech_admin}:${POSTGRES_PASSWORD:-news_summary}@postgres:5432/${POSTGRES_DB:-tech_news_db}
     ports:
       - "${BACKEND_PORT:-18080}:8000"
     depends_on:
@@ -78,14 +78,16 @@ services:
       AIRFLOW_ADMIN_USERNAME: ${AIRFLOW_ADMIN_USERNAME:-admin}
       AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-admin}
       AIRFLOW_ADMIN_EMAIL: ${AIRFLOW_ADMIN_EMAIL:-admin@example.com}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-news_user}:${POSTGRES_PASSWORD:-news_password_dev}@postgres:5432/${POSTGRES_DB:-news_db}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tech_admin}:${POSTGRES_PASSWORD:-news_summary}@postgres:5432/${POSTGRES_DB:-tech_news_db}
       CRAWL_URLS: ${CRAWL_URLS:-}
       CRAWL_SOURCE_ID: ${CRAWL_SOURCE_ID:-1}
       CRAWL_SOURCE_NAME: ${CRAWL_SOURCE_NAME:-vnexpress}
       CRAWL_TIMEOUT_SECONDS: ${CRAWL_TIMEOUT_SECONDS:-20}
       TZ: ${TZ:-Asia/Ho_Chi_Minh}
+      PYTHONPATH: /opt/project:/opt/project/scripts
     volumes: &airflow-volumes
       - ./airflow/dags:/opt/airflow/dags:ro
+      - ./database:/opt/project/database:ro
       - ./scripts:/opt/project/scripts:ro
       - ./crawl_data:/opt/project/crawl_data
       - airflow_logs:/opt/airflow/logs

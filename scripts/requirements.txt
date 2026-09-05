@@ -14,3 +14,6 @@ PyYAML>=6.0.1
 
 # Feed & RSS/Atom Parsing
 feedparser>=6.0.10
+
+# Database Drivers
+psycopg[binary]>=3.1.18

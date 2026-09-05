@@ -13,14 +13,13 @@ from airflow import DAG
 from airflow.exceptions import AirflowException
 from airflow.operators.python import PythonOperator
 
-# Thêm đường dẫn thư mục scripts của dự án vào sys.path trong môi trường Airflow
-sys.path.insert(0, "/opt/project/scripts")
+for path in ("/opt/project", "/opt/project/scripts"):
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
-from crawl_to_db import (  # noqa: E402
-    SeleniumFetcher,
-    crawl_article,
-    insert_rawdata,
-)
+from crawler.fetchers.selenium_fetcher import SeleniumFetcher  # noqa: E402
+from crawler.pipeline import crawl_article  # noqa: E402
+from database.operations import insert_rawdata  # noqa: E402
 
 
 def _configured_urls() -> list[str]:
@@ -55,17 +54,19 @@ def run_crawler_batch() -> None:
         for url in urls:
             record = crawl_article(
                 url=url,
-                source_id=source_id,
                 source_name=source_name,
                 timeout=timeout,
                 fetcher=fetcher,
-                crawl_run_id=crawl_run_id,
             )
+            record["source_id"] = source_id
+            record["crawl_run_id"] = str(crawl_run_id)
             record_id = insert_rawdata(record, database_url)
-            result = {"id": record_id, "url": record.url, "status": record.status}
+            status = record.get("status") or record.get("crawl_status") or "UNKNOWN"
+            article_url = str(record.get("url") or url)
+            result = {"id": record_id, "url": article_url, "status": status}
             results.append(result)
-            if record.status != "SUCCESS":
-                failures.append(f"{record.url}: {record.status}")
+            if status != "SUCCESS":
+                failures.append(f"{article_url}: {status}")
     finally:
         fetcher.close()
 
