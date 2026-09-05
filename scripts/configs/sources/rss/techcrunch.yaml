@@ -1,0 +1,46 @@
+source_id: 3
+source_name: "techcrunch"
+display_name: "TechCrunch"
+channel_type: "rss"
+domains:
+  - "techcrunch.com"
+
+rss_feeds:
+  - "https://techcrunch.com/feed/"
+  - "https://techcrunch.com/category/artificial-intelligence/feed/"
+
+listing_urls:
+  - "https://techcrunch.com/category/artificial-intelligence/"
+
+fetcher:
+  type: "http"
+  timeout: 15
+
+parser:
+  type: "declarative"
+  selectors:
+    title:
+      - "h1.article__title"
+      - "h1.wp-block-post-title"
+      - "h1"
+      - "meta[property='og:title']@content"
+    author:
+      - ".article__byline a"
+      - ".wp-block-post-author-name"
+      - "meta[name='author']@content"
+    published_at:
+      - "meta[property='article:published_time']@content"
+      - "time[datetime]@datetime"
+      - ".article__date"
+    thumbnail_url:
+      - "meta[property='og:image']@content"
+      - "figure.article__featured-image img@src"
+    content_paragraphs:
+      - ".article-content p"
+      - ".entry-content p"
+      - "article p"
+  clean_rules:
+    strip_elements:
+      - ".wp-block-embed"
+      - "script"
+      - "style"

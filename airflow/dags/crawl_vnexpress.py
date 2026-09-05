@@ -1,4 +1,4 @@
-"""Schedule the Step 1 VnExpress crawler and persist each raw crawl record."""
+"""DAG Airflow định lịch thu thập tin tức VnExpress (Step 1) và lưu dữ liệu thô vào bảng rawdata."""
 
 from __future__ import annotations
 
@@ -13,7 +13,9 @@ from airflow import DAG
 from airflow.exceptions import AirflowException
 from airflow.operators.python import PythonOperator
 
-sys.path.insert(0, "/opt/project/scripts")
+for path in ("/opt/project", "/opt/project/scripts"):
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
 from crawl_to_db import (  # noqa: E402
     SeleniumFetcher,
@@ -64,7 +66,7 @@ def run_crawler_batch(**context: object) -> None:
     results: list[dict[str, object]] = []
     failures: list[str] = []
 
-    # One browser session is reused for the sequential Step 1 batch.
+    # Tái sử dụng một phiên trình duyệt Selenium duy nhất cho toàn bộ danh sách URL trong batch để tối ưu hiệu năng
     fetcher = SeleniumFetcher(timeout=timeout)
     try:
         for url in urls:
@@ -88,19 +90,22 @@ def run_crawler_batch(**context: object) -> None:
                 source_name=source_name,
                 timeout=timeout,
                 fetcher=fetcher,
-                crawl_run_id=crawl_run_id,
             )
+            record["source_id"] = source_id
+            record["crawl_run_id"] = str(crawl_run_id)
             record_id = insert_rawdata(record, database_url)
-            result = {"id": record_id, "url": record.url, "status": record.status}
+            status = record.get("status") or record.get("crawl_status") or "UNKNOWN"
+            article_url = str(record.get("url") or url)
+            result = {"id": record_id, "url": article_url, "status": status}
             results.append(result)
-            if record.status != "SUCCESS":
-                failures.append(f"{record.url}: {record.status}")
+            if status != "SUCCESS":
+                failures.append(f"{article_url}: {status}")
     finally:
         fetcher.close()
 
     print(json.dumps(results, ensure_ascii=False))
     if failures:
-        raise AirflowException("One or more URLs failed: " + "; ".join(failures))
+        raise AirflowException("Một hoặc nhiều URL cào thất bại: " + "; ".join(failures))
 
 
 with DAG(
@@ -128,3 +133,4 @@ with DAG(
         task_id="crawl_articles",
         python_callable=run_crawler_batch,
     )
+

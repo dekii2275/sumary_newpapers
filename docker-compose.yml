@@ -3,9 +3,9 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-news_db}
-      POSTGRES_USER: ${POSTGRES_USER:-news_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-news_password_dev}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "${POSTGRES_PORT:-15432}:5432"
     volumes:
@@ -22,7 +22,7 @@ services:
       context: ./backend
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-news_user}:${POSTGRES_PASSWORD:-news_password_dev}@postgres:5432/${POSTGRES_DB:-news_db}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     ports:
       - "${BACKEND_PORT:-18080}:8000"
     depends_on:
@@ -52,9 +52,9 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${AIRFLOW_POSTGRES_DB:-airflow}
-      POSTGRES_USER: ${AIRFLOW_POSTGRES_USER:-airflow}
-      POSTGRES_PASSWORD: ${AIRFLOW_POSTGRES_PASSWORD:-airflow_password_dev}
+      POSTGRES_DB: ${AIRFLOW_POSTGRES_DB}
+      POSTGRES_USER: ${AIRFLOW_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${AIRFLOW_POSTGRES_PASSWORD}
     volumes:
       - airflow_postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -70,22 +70,24 @@ services:
     restart: "no"
     environment: &airflow-environment
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_POSTGRES_USER:-airflow}:${AIRFLOW_POSTGRES_PASSWORD:-airflow_password_dev}@airflow-postgres:5432/${AIRFLOW_POSTGRES_DB:-airflow}
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_POSTGRES_USER}:${AIRFLOW_POSTGRES_PASSWORD}@airflow-postgres:5432/${AIRFLOW_POSTGRES_DB}
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
       AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
-      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-local-airflow-secret}
-      AIRFLOW_ADMIN_USERNAME: ${AIRFLOW_ADMIN_USERNAME:-admin}
-      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-admin}
-      AIRFLOW_ADMIN_EMAIL: ${AIRFLOW_ADMIN_EMAIL:-admin@example.com}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-news_user}:${POSTGRES_PASSWORD:-news_password_dev}@postgres:5432/${POSTGRES_DB:-news_db}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+      AIRFLOW_ADMIN_USERNAME: ${AIRFLOW_ADMIN_USERNAME}
+      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
+      AIRFLOW_ADMIN_EMAIL: ${AIRFLOW_ADMIN_EMAIL}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       CRAWL_URLS: ${CRAWL_URLS:-}
       CRAWL_SOURCE_ID: ${CRAWL_SOURCE_ID:-1}
       CRAWL_SOURCE_NAME: ${CRAWL_SOURCE_NAME:-vnexpress}
       CRAWL_TIMEOUT_SECONDS: ${CRAWL_TIMEOUT_SECONDS:-20}
       TZ: ${TZ:-Asia/Ho_Chi_Minh}
+      PYTHONPATH: /opt/project:/opt/project/scripts
     volumes: &airflow-volumes
       - ./airflow/dags:/opt/airflow/dags:ro
+      - ./database:/opt/project/database:ro
       - ./scripts:/opt/project/scripts:ro
       - ./crawl_data:/opt/project/crawl_data
       - airflow_logs:/opt/airflow/logs

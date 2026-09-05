@@ -1,0 +1,48 @@
+source_id: 1
+source_name: "vnexpress"
+display_name: "VnExpress"
+channel_type: "rss"
+domains:
+  - "vnexpress.net"
+
+rss_feeds:
+  - "https://vnexpress.net/rss/khoa-hoc-cong-nghe.rss"
+
+listing_urls:
+  - "https://vnexpress.net/so-hoa/cong-nghe"
+
+fetcher:
+  type: "http"
+  timeout: 20
+
+parser:
+  type: "declarative"
+  selectors:
+    title:
+      - "h1.title-detail"
+      - "h1.title_news_detail"
+      - "h1"
+      - "meta[property='og:title']@content"
+    author:
+      - ".author_mail"
+      - ".author"
+      - "p.Normal strong"
+    published_at:
+      - "meta[property='article:published_time']@content"
+      - "time[datetime]@datetime"
+      - "time.date[datetime]@datetime"
+      - ".date"
+    thumbnail_url:
+      - "meta[property='og:image']@content"
+      - "article img@src"
+    content_paragraphs:
+      - ".fck_detail p"
+      - "article p"
+      - ".content_detail p"
+  clean_rules:
+    strip_elements:
+      - ".box-common-category"
+      - ".list-news-related"
+      - ".box-interact"
+      - "script"
+      - "style"
