@@ -176,6 +176,7 @@ Ví dụ:
 
 ```json
 {
+  "schema_version": 2,
   "source": "vnexpress",
   "url": "https://vnexpress.net/example.html",
   "final_url": "https://vnexpress.net/example.html",
@@ -184,9 +185,12 @@ Ví dụ:
   "published_at": "2026-08-21T10:30:00+07:00",
   "content": "Nội dung bài báo...",
   "thumbnail_url": "https://...",
-  "raw_html_path": "data/raw/abc123.html",
+  "raw_object_key": "crawl_data/raw/vnexpress/runs/<crawl_run_id>/<artifact>.html.gz",
+  "raw_payload_type": "text/html",
+  "raw_content_hash": "sha256...",
+  "status": "SUCCESS",
   "http_status": 200,
-  "crawl_status": "SUCCESS",
+  "crawl_run_id": "...",
   "fetched_at": "2026-08-21T20:00:00+07:00"
 }
 ```
@@ -196,6 +200,8 @@ Ví dụ:
 - `content` có thể chưa hoàn toàn sạch.
 - `published_at` có thể chưa parse được ở một số website.
 - Một số field có thể `null`.
+- `raw_html_path` và `crawl_status` chỉ còn là field legacy của metadata v1;
+  metadata mới phải dùng `raw_object_key` và `status`.
 
 Điều quan trọng là crawler phải trả về cùng một cấu trúc.
 
@@ -226,11 +232,17 @@ class RawArticle:
 
     thumbnail_url: Optional[str]
 
-    raw_html_path: Optional[str]
+    raw_object_key: Optional[str]
+
+    raw_payload_type: Optional[str]
+
+    raw_content_hash: Optional[str]
 
     http_status: Optional[int]
 
-    crawl_status: str
+    status: str
+
+    crawl_run_id: str
 
     fetched_at: datetime
 ```
@@ -480,12 +492,10 @@ Ví dụ:
 data/
 └── raw/
     └── vnexpress/
-        └── 2026/
-            └── 08/
-                └── 21/
-                    ├── article_001.html
-                    ├── article_002.html
-                    └── article_003.html
+        └── runs/
+            └── <crawl_run_id>/
+                ├── <url_hash>_<run_id>.html.gz
+                └── ...
 ```
 
 Function đơn giản:
@@ -812,27 +822,39 @@ Ví dụ:
 ```text
 data/
 ├── raw/
-│   └── vnexpress/
-│       └── xxx.html.gz
+│   └── vnexpress/runs/<crawl_run_id>/
+│       └── <url_hash>_<run_id>.html.gz
 │
 └── metadata/
-    └── vnexpress/
-        └── xxx.json
+    └── vnexpress/runs/<crawl_run_id>/
+        └── <url_hash>_<run_id>.json
 ```
 
 File metadata:
 
 ```json
 {
+  "schema_version": 2,
   "source": "vnexpress",
   "url": "...",
+  "final_url": "...",
   "title": "...",
   "author": "...",
   "published_at": "...",
-  "raw_html_path": "...",
-  "crawl_status": "SUCCESS"
+  "content": "...",
+  "thumbnail_url": null,
+  "raw_object_key": "...",
+  "raw_payload_type": "text/html",
+  "raw_content_hash": "...",
+  "status": "SUCCESS",
+  "http_status": null,
+  "crawl_run_id": "...",
+  "fetched_at": "..."
 }
 ```
+
+Metadata v1 dùng `raw_html_path` và `crawl_status` chỉ được giữ để đọc tương
+thích; crawler mới không ghi thêm file theo schema cũ.
 
 Cách này giúp debug rất nhanh trong giai đoạn thử nghiệm.
 
