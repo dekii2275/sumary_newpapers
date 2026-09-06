@@ -6,17 +6,19 @@ services:
     image: postgres:16-alpine
     container_name: tech-news-postgres
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-tech_news_db}
-      POSTGRES_USER: ${POSTGRES_USER:-tech_admin}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-news_summary}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "${POSTGRES_PORT:-15432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-tech_admin} -d $${POSTGRES_DB:-tech_news_db}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -32,8 +34,10 @@ services:
     image: ai-tech-news-backend:local
     container_name: tech-news-backend
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-tech_admin}:${POSTGRES_PASSWORD:-news_summary}@postgres:5432/${POSTGRES_DB:-tech_news_db}
+      DATABASE_URL: ${DATABASE_URL}
     ports:
       - "${BACKEND_PORT:-18080}:8000"
     volumes:
@@ -77,14 +81,16 @@ services:
     image: postgres:16-alpine
     container_name: tech-news-airflow-postgres
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      POSTGRES_DB: ${AIRFLOW_POSTGRES_DB:-airflow}
-      POSTGRES_USER: ${AIRFLOW_POSTGRES_USER:-airflow}
-      POSTGRES_PASSWORD: ${AIRFLOW_POSTGRES_PASSWORD:-airflow}
+      POSTGRES_DB: ${AIRFLOW_POSTGRES_DB}
+      POSTGRES_USER: ${AIRFLOW_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${AIRFLOW_POSTGRES_PASSWORD}
     volumes:
       - airflow_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${AIRFLOW_POSTGRES_USER:-airflow} -d $${AIRFLOW_POSTGRES_DB:-airflow}"]
+      test: ["CMD-SHELL", "pg_isready -U $${AIRFLOW_POSTGRES_USER} -d $${AIRFLOW_POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -101,22 +107,24 @@ services:
     image: ai-tech-news-airflow:local
     container_name: tech-news-airflow-init
     restart: "no"
+    env_file:
+      - .env
     environment: &airflow-environment
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_POSTGRES_USER:-airflow}:${AIRFLOW_POSTGRES_PASSWORD:-airflow}@airflow-postgres:5432/${AIRFLOW_POSTGRES_DB:-airflow}
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN}
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
       AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
-      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-4686e72d25d79464b87638401f341eb2}
-      AIRFLOW_ADMIN_USERNAME: ${AIRFLOW_ADMIN_USERNAME:-admin}
-      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-admin}
-      AIRFLOW_ADMIN_EMAIL: ${AIRFLOW_ADMIN_EMAIL:-admin@example.com}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-tech_admin}:${POSTGRES_PASSWORD:-news_summary}@postgres:5432/${POSTGRES_DB:-tech_news_db}
-      CRAWL_URLS: ${CRAWL_URLS:-}
-      CRAWL_SOURCE_ID: ${CRAWL_SOURCE_ID:-1}
-      CRAWL_SOURCE_NAME: ${CRAWL_SOURCE_NAME:-vnexpress}
-      CRAWL_TIMEOUT_SECONDS: ${CRAWL_TIMEOUT_SECONDS:-20}
-      TZ: ${TZ:-Asia/Ho_Chi_Minh}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+      AIRFLOW_ADMIN_USERNAME: ${AIRFLOW_ADMIN_USERNAME}
+      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
+      AIRFLOW_ADMIN_EMAIL: ${AIRFLOW_ADMIN_EMAIL}
+      DATABASE_URL: ${DATABASE_URL}
+      CRAWL_URLS: ${CRAWL_URLS}
+      CRAWL_SOURCE_ID: ${CRAWL_SOURCE_ID}
+      CRAWL_SOURCE_NAME: ${CRAWL_SOURCE_NAME}
+      CRAWL_TIMEOUT_SECONDS: ${CRAWL_TIMEOUT_SECONDS}
+      TZ: ${TZ}
       PYTHONPATH: /opt/project:/opt/project/scripts
     volumes: &airflow-volumes
       - ./airflow/dags:/opt/airflow/dags:ro
