@@ -153,18 +153,36 @@ Các secret như API key của LLM, thông tin database, object storage và dị
 
 ## Chạy local bằng Docker
 
-Repository hiện có sẵn scaffold cho ba service cơ bản:
+### 1. Chuẩn bị biến môi trường
+Trước khi chạy, bạn có thể tạo file `.env` từ file mẫu:
+```bash
+cp .env.example .env
+```
+*(Nếu không tạo file `.env`, Docker Compose đã được cấu hình sẵn các giá trị mặc định an toàn cho môi trường phát triển local).*
 
-| Service | Cổng host | Cổng trong container |
-| --- | ---: | ---: |
-| Frontend | `13000` | `3000` |
-| Backend | `18080` | `8000` |
-| PostgreSQL | `15432` | `5432` |
+### 2. Danh sách các service và cổng kết nối
 
-Khởi động toàn bộ stack:
+| Service | Container Name | Cổng host | Cổng container | Mô tả |
+| --- | --- | ---: | ---: | --- |
+| Frontend | `tech-news-frontend` | `13000` | `3000` | Giao diện Next.js |
+| Backend | `tech-news-backend` | `18080` | `8000` | FastAPI chính |
+| PostgreSQL | `tech-news-postgres` | `15432` | `5432` | Cơ sở dữ liệu tin tức nghiệp vụ |
+| Airflow Webserver | `tech-news-airflow-webserver` | `18088` | `8080` | UI quản lý pipeline crawler |
+| Airflow Scheduler | `tech-news-airflow-scheduler` | - | - | Bộ lập lịch thu thập tin tức |
+| Airflow Postgres | `tech-news-airflow-postgres` | - | `5432` | DB metadata nội bộ của Airflow |
+
+### 3. Lệnh khởi động
+
+Khởi động toàn bộ stack (Frontend, Backend, DB & Airflow):
 
 ```bash
 docker compose up --build -d
+```
+
+Hoặc chỉ khởi động cụm ứng dụng chính (không kèm Airflow):
+
+```bash
+docker compose up --build -d postgres backend frontend
 ```
 
 Truy cập các service:

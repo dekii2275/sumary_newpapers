@@ -1,30 +1,43 @@
 services:
+  # ----------------------------------------------------------------------------
+  # 1. Main PostgreSQL Database (Dữ liệu nghiệp vụ tin tức)
+  # ----------------------------------------------------------------------------
   postgres:
     image: postgres:16-alpine
+    container_name: tech-news-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-tech_news_db}
+      POSTGRES_USER: ${POSTGRES_USER:-tech_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-news_summary}
     ports:
       - "${POSTGRES_PORT:-15432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-tech_admin} -d $${POSTGRES_DB:-tech_news_db}"]
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - tech_news_network
 
+  # ----------------------------------------------------------------------------
+  # 2. Backend Service (FastAPI)
+  # ----------------------------------------------------------------------------
   backend:
     build:
       context: ./backend
+    image: ai-tech-news-backend:local
+    container_name: tech-news-backend
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tech_admin}:${POSTGRES_PASSWORD:-news_summary}@postgres:5432/${POSTGRES_DB:-tech_news_db}
     ports:
       - "${BACKEND_PORT:-18080}:8000"
+    volumes:
+      - ./backend:/app:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -33,10 +46,17 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - tech_news_network
 
+  # ----------------------------------------------------------------------------
+  # 3. Frontend Service (Next.js)
+  # ----------------------------------------------------------------------------
   frontend:
     build:
       context: ./frontend
+    image: ai-tech-news-frontend:local
+    container_name: tech-news-frontend
     restart: unless-stopped
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-18080}
@@ -47,38 +67,51 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    networks:
+      - tech_news_network
 
+  # ----------------------------------------------------------------------------
+  # 4. Airflow Metadata Database
+  # ----------------------------------------------------------------------------
   airflow-postgres:
     image: postgres:16-alpine
+    container_name: tech-news-airflow-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${AIRFLOW_POSTGRES_DB}
-      POSTGRES_USER: ${AIRFLOW_POSTGRES_USER}
-      POSTGRES_PASSWORD: ${AIRFLOW_POSTGRES_PASSWORD}
+      POSTGRES_DB: ${AIRFLOW_POSTGRES_DB:-airflow}
+      POSTGRES_USER: ${AIRFLOW_POSTGRES_USER:-airflow}
+      POSTGRES_PASSWORD: ${AIRFLOW_POSTGRES_PASSWORD:-airflow}
     volumes:
       - airflow_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $${AIRFLOW_POSTGRES_USER:-airflow} -d $${AIRFLOW_POSTGRES_DB:-airflow}"]
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - tech_news_network
 
+  # ----------------------------------------------------------------------------
+  # 5. Airflow Init Service (Chạy migration & tạo admin user)
+  # ----------------------------------------------------------------------------
   airflow-init:
     build:
       context: .
       dockerfile: airflow/Dockerfile
+    image: ai-tech-news-airflow:local
+    container_name: tech-news-airflow-init
     restart: "no"
     environment: &airflow-environment
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_POSTGRES_USER}:${AIRFLOW_POSTGRES_PASSWORD}@airflow-postgres:5432/${AIRFLOW_POSTGRES_DB}
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_POSTGRES_USER:-airflow}:${AIRFLOW_POSTGRES_PASSWORD:-airflow}@airflow-postgres:5432/${AIRFLOW_POSTGRES_DB:-airflow}
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
       AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
-      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
-      AIRFLOW_ADMIN_USERNAME: ${AIRFLOW_ADMIN_USERNAME}
-      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
-      AIRFLOW_ADMIN_EMAIL: ${AIRFLOW_ADMIN_EMAIL}
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-4686e72d25d79464b87638401f341eb2}
+      AIRFLOW_ADMIN_USERNAME: ${AIRFLOW_ADMIN_USERNAME:-admin}
+      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-admin}
+      AIRFLOW_ADMIN_EMAIL: ${AIRFLOW_ADMIN_EMAIL:-admin@example.com}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tech_admin}:${POSTGRES_PASSWORD:-news_summary}@postgres:5432/${POSTGRES_DB:-tech_news_db}
       CRAWL_URLS: ${CRAWL_URLS:-}
       CRAWL_SOURCE_ID: ${CRAWL_SOURCE_ID:-1}
       CRAWL_SOURCE_NAME: ${CRAWL_SOURCE_NAME:-vnexpress}
@@ -99,17 +132,21 @@ services:
     command: >-
       bash -c "airflow db migrate &&
       (airflow users create
-      --username \"$${AIRFLOW_ADMIN_USERNAME}\"
-      --password \"$${AIRFLOW_ADMIN_PASSWORD}\"
+      --username \"$${AIRFLOW_ADMIN_USERNAME:-admin}\"
+      --password \"$${AIRFLOW_ADMIN_PASSWORD:-admin}\"
       --firstname Admin
       --lastname User
       --role Admin
-      --email \"$${AIRFLOW_ADMIN_EMAIL}\" || true)"
+      --email \"$${AIRFLOW_ADMIN_EMAIL:-admin@example.com}\" || true)"
+    networks:
+      - tech_news_network
 
+  # ----------------------------------------------------------------------------
+  # 6. Airflow Webserver (UI điều khiển crawler & theo dõi DAGs)
+  # ----------------------------------------------------------------------------
   airflow-webserver:
-    build:
-      context: .
-      dockerfile: airflow/Dockerfile
+    image: ai-tech-news-airflow:local
+    container_name: tech-news-airflow-webserver
     restart: unless-stopped
     environment: *airflow-environment
     volumes: *airflow-volumes
@@ -119,11 +156,15 @@ services:
       airflow-init:
         condition: service_completed_successfully
     command: webserver
+    networks:
+      - tech_news_network
 
+  # ----------------------------------------------------------------------------
+  # 7. Airflow Scheduler (Lập lịch & điều phối pipeline crawler)
+  # ----------------------------------------------------------------------------
   airflow-scheduler:
-    build:
-      context: .
-      dockerfile: airflow/Dockerfile
+    image: ai-tech-news-airflow:local
+    container_name: tech-news-airflow-scheduler
     restart: unless-stopped
     environment: *airflow-environment
     volumes: *airflow-volumes
@@ -131,6 +172,13 @@ services:
       airflow-init:
         condition: service_completed_successfully
     command: scheduler
+    networks:
+      - tech_news_network
+
+networks:
+  tech_news_network:
+    name: tech_news_network
+    driver: bridge
 
 volumes:
   postgres_data:

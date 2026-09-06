@@ -6,7 +6,13 @@ PostgreSQL `news_db` hiện tại, bảng `rawdata`.
 
 ## Khởi động
 
-Tạo file `.env` ở thư mục gốc (không commit file này):
+Tạo file `.env` ở thư mục gốc bằng cách copy từ `.env.example` (không commit file `.env` này):
+
+```bash
+cp .env.example .env
+```
+
+Cấu hình các biến chính theo nhu cầu:
 
 ```dotenv
 CRAWL_URLS=https://vnexpress.net/duong-dan-bai-viet-1.html,https://vnexpress.net/duong-dan-bai-viet-2.html
