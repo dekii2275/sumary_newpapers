@@ -71,26 +71,10 @@ def crawl_article(
     fallback_published_at: str | None = None,
     fallback_author: str | None = None,
     fallback_thumbnail: str | None = None,
+    save_local: bool = False,
     **kwargs,
 ) -> dict[str, object]:
-    """Thực thi toàn bộ luồng cào 1 bài viết: tải trang, trích xuất, lưu artifact cục bộ.
-    
-    Args:
-        url: Đường dẫn URL của bài viết.
-        source_name: Tên nguồn bài viết (nếu None sẽ tự động suy luận từ tên miền URL).
-        timeout: Thời gian timeout tải trang (nếu None sẽ lấy từ cấu hình nguồn).
-        fetcher: Thể hiện fetcher dùng lại (nếu có, ví dụ khi cào theo lô).
-        force: Nếu True, ép buộc cào lại bài viết dù đã từng cào trước đó (mặc định: False).
-        discovery_method: Phương thức khám phá ('rss', 'api', 'listing', 'direct').
-        discovery_metadata: Dữ liệu phát hiện ban đầu từ RSS / API.
-        fallback_title: Tiêu đề bổ trợ nếu HTML không bóc tách được.
-        fallback_published_at: Ngày đăng bổ trợ từ feed/API nếu HTML thiếu.
-        fallback_author: Tác giả bổ trợ từ feed/API nếu HTML thiếu.
-        fallback_thumbnail: Ảnh đại diện bổ trợ nếu HTML thiếu.
-        
-    Returns:
-        dict[str, object]: Từ điển metadata bài viết được lưu trữ trong crawl_data/metadata/.
-    """
+    """Thực thi toàn bộ luồng cào 1 bài viết: tải trang, trích xuất metadata."""
     # 1. Chuẩn hóa URL
     normalized_url = normalize_url(url)
     fetched_at = datetime.now(timezone.utc)
@@ -132,7 +116,6 @@ def crawl_article(
                     sf_cls = SeleniumFetcher
                 sf_instance = sf_cls(timeout=effective_timeout)
 
-
                 try:
                     selenium_resp = sf_instance.fetch(normalized_url)
                     if selenium_resp.get("html") and str(selenium_resp.get("html")).strip():
@@ -143,7 +126,6 @@ def crawl_article(
                     sf_instance.close()
             except Exception:
                 pass
-
 
         # Kiểm tra nếu trang trả về mã HTML rỗng
         if not html.strip():
@@ -159,6 +141,7 @@ def crawl_article(
                 error="Nội dung HTML trả về bị rỗng",
                 discovery_method=discovery_method,
                 discovery_metadata=discovery_metadata,
+                save_local=save_local,
             )
 
         # 4. Phân tích và bóc tách dữ liệu bài báo qua GenericParser
@@ -178,7 +161,7 @@ def crawl_article(
         crawl_status = "SUCCESS" if article.get("content") else "CONTENT_NOT_FOUND"
         error_message = None if crawl_status == "SUCCESS" else "Không tìm thấy nội dung bài viết phù hợp"
         
-        # 5. Lưu trữ tệp thô nén .html.gz và tệp metadata .json trong crawl_data/
+        # 5. Lưu trữ metadata (và file local nếu save_local=True)
         metadata = save_artifacts(
             html=html,
             source_name=effective_source_name,
@@ -191,6 +174,7 @@ def crawl_article(
             error=error_message,
             discovery_method=discovery_method,
             discovery_metadata=discovery_metadata,
+            save_local=save_local,
         )
         return metadata
 
@@ -219,5 +203,6 @@ def crawl_article(
         error=error_message,
         discovery_method=discovery_method,
         discovery_metadata=discovery_metadata,
+        save_local=save_local,
     )
 

@@ -18,7 +18,6 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from database.connection import get_database_url, test_connection, _mask_url_password
-from database.operations import count_rawdata
 
 
 def main() -> int:
@@ -53,13 +52,14 @@ def main() -> int:
     tables = result.get("tables", [])
     print(f"- Các bảng hiện có trong schema public ({len(tables)}): {', '.join(tables) if tables else '(chưa có bảng nào)'}")
 
-    if "rawdata" in tables:
+    if "raw_articles" in tables:
         try:
-            total_rows = count_rawdata()
-            success_rows = count_rawdata(status="SUCCESS")
-            print(f"- Bảng 'rawdata': tổng cộng {total_rows} bản ghi ({success_rows} thành công)")
+            from database.connection import execute_query
+            rows = execute_query("SELECT count(*) FROM raw_articles;")
+            total_rows = rows[0]["count"] if rows else 0
+            print(f"- Bảng 'raw_articles': tổng cộng {total_rows} bản ghi")
         except Exception as e:
-            print(f"- Lỗi khi đọc bảng rawdata: {e}")
+            print(f"- Lỗi khi đọc bảng raw_articles: {e}")
 
     print("=" * 60)
     return 0

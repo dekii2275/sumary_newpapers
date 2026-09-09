@@ -9,9 +9,9 @@ from database.connection import (
 from database.operations import (
     check_url_exists,
     count_rawdata,
-    get_latest_rawdata,
-    get_rawdata_by_id,
-    insert_rawdata,
+    get_active_sources_from_db,
+    insert_raw_article,
+    save_crawl_result_to_db,
 )
 
 __all__ = [
@@ -19,10 +19,9 @@ __all__ = [
     "get_database_url",
     "test_connection",
     "execute_query",
-    "insert_rawdata",
-    "get_rawdata_by_id",
+    "insert_raw_article",
+    "save_crawl_result_to_db",
     "check_url_exists",
+    "get_active_sources_from_db",
     "count_rawdata",
-    "get_latest_rawdata",
 ]
-

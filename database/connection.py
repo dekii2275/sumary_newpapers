@@ -14,6 +14,14 @@ from contextlib import contextmanager
 from typing import Any, Generator
 from urllib.parse import quote_plus
 
+# Tự động nạp biến môi trường từ file .env nếu có
+try:
+    from dotenv import find_dotenv, load_dotenv
+
+    load_dotenv(find_dotenv(usecwd=True))
+except ImportError:
+    pass
+
 # Thử import psycopg (phiên bản 3 - chuẩn khuyến nghị), nếu không có thì fallback sang psycopg2
 try:
     import psycopg  # type: ignore
@@ -32,9 +40,9 @@ except ImportError:
         PSYCOPG_VERSION = 0
 
 
-DEFAULT_POSTGRES_USER = "tech_admin"
-DEFAULT_POSTGRES_PASSWORD = "news_summary"
-DEFAULT_POSTGRES_DB = "tech_news_db"
+DEFAULT_POSTGRES_USER = "postgres"
+DEFAULT_POSTGRES_PASSWORD = ""
+DEFAULT_POSTGRES_DB = "postgres"
 DEFAULT_CONTAINER_PORT = 5432
 DEFAULT_HOST_PORT = 15432
 
@@ -43,17 +51,27 @@ def get_database_url() -> str:
     """Xác định chuỗi kết nối PostgreSQL (DATABASE_URL) từ biến môi trường.
 
     Thứ tự ưu tiên:
-    1. Biến môi trường `DATABASE_URL` nếu đã được thiết lập.
+    1. Biến môi trường `DATABASE_URL` nếu đã được thiết lập (và tương thích với môi trường host/container).
     2. Tổng hợp từ các biến đơn lẻ: `POSTGRES_USER`, `POSTGRES_PASSWORD`,
        `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`.
     """
+    is_in_container = os.path.exists("/.dockerenv")
     env_url = os.getenv("DATABASE_URL")
+
     if env_url:
-        return env_url
+        # Nếu DATABASE_URL trỏ tới host docker 'postgres' nhưng đang chạy ngoài máy host,
+        # bỏ qua DATABASE_URL để tự động ghép nối với host='localhost' và POSTGRES_PORT trên host.
+        if not is_in_container and "@postgres:" in env_url:
+            pass
+        else:
+            return env_url
 
     user = os.getenv("POSTGRES_USER", DEFAULT_POSTGRES_USER)
     password = os.getenv("POSTGRES_PASSWORD", DEFAULT_POSTGRES_PASSWORD)
-    host = os.getenv("POSTGRES_HOST", "localhost")
+
+    default_host = "postgres" if is_in_container else "localhost"
+    host = os.getenv("POSTGRES_HOST", default_host)
+
     db = os.getenv("POSTGRES_DB", DEFAULT_POSTGRES_DB)
 
     # Nếu đang trỏ tới host docker 'postgres' thì mặc định cổng 5432, ngược lại trỏ localhost dùng cổng 15432
@@ -105,55 +123,6 @@ def get_connection(
         conn.close()
 
 
-def test_connection(database_url: str | None = None) -> dict[str, Any]:
-    """Kiểm tra khả năng kết nối tới cơ sở dữ liệu và trả về thông tin chi tiết."""
-    url = database_url or get_database_url()
-
-    try:
-        _ensure_driver()
-        with get_connection(url, connect_timeout=3) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT version();")
-            version_row = cursor.fetchone()
-            db_version = version_row[0] if version_row else "Unknown"
-
-            cursor.execute("SELECT current_database(), current_user;")
-            meta_row = cursor.fetchone()
-            current_db = meta_row[0] if meta_row else None
-            current_user = meta_row[1] if meta_row else None
-
-            cursor.execute(
-                """
-                SELECT table_name
-                FROM information_schema.tables
-                WHERE table_schema = 'public'
-                ORDER BY table_name;
-                """
-            )
-            tables = [r[0] for r in cursor.fetchall()]
-
-            cursor.close()
-
-            return {
-                "status": "success",
-                "connected": True,
-                "driver": f"psycopg v{PSYCOPG_VERSION}",
-                "database": current_db,
-                "user": current_user,
-                "server_version": db_version,
-                "tables": tables,
-            }
-    except Exception as error:
-        return {
-            "status": "error",
-            "connected": False,
-            "driver": f"psycopg v{PSYCOPG_VERSION}" if PSYCOPG_VERSION > 0 else "None",
-            "error_type": type(error).__name__,
-            "error_message": str(error),
-            "target_url": _mask_url_password(url),
-        }
-
-
 def _mask_url_password(url: str) -> str:
     """Ẩn mật khẩu trong chuỗi URL để log/hiển thị an toàn."""
     try:
@@ -193,3 +162,37 @@ def execute_query(
         results = cursor.fetchall()
         cursor.close()
         return results
+
+
+def test_connection(database_url: str | None = None) -> dict[str, Any]:
+    """Kiểm tra sức khỏe kết nối PostgreSQL và trả về thông tin chi tiết."""
+    url = database_url or get_database_url()
+    result: dict[str, Any] = {"connected": False, "driver": f"psycopg{PSYCOPG_VERSION}"}
+
+    try:
+        with get_connection(url, connect_timeout=3) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT current_database(), current_user, version();")
+            row = cursor.fetchone()
+            if row:
+                if isinstance(row, dict):
+                    result["database"] = row.get("current_database")
+                    result["user"] = row.get("current_user")
+                    result["server_version"] = row.get("version")
+                else:
+                    result["database"] = row[0]
+                    result["user"] = row[1]
+                    result["server_version"] = row[2]
+
+            cursor.execute(
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';"
+            )
+            tables = [r[0] if not isinstance(r, dict) else r["table_name"] for r in cursor.fetchall()]
+            result["tables"] = tables
+            result["connected"] = True
+            cursor.close()
+    except Exception as exc:
+        result["error_type"] = type(exc).__name__
+        result["error_message"] = str(exc)
+
+    return result

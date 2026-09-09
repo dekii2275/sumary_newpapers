@@ -2,9 +2,9 @@
 
 Quy trình hoạt động:
 1. Stage 1 (Discovery): Quét RSS Feed XML, REST API JSON hoặc Listing HTML để khám phá các bài viết mới nhất.
-2. Deduplication: Lọc bỏ các bài đã từng cào trước đó dựa trên URL hash SHA-256 (tiết kiệm băng thông và CPU).
+2. Deduplication: Lọc bỏ các bài đã từng cào trước đó dựa trên PostgreSQL DB (raw_articles) hoặc Local Hash SHA-256.
 3. Stage 2 (Extraction): Bóc tách toàn văn HTML qua Crawler Pipeline (GenericParser + Trafilatura fallback).
-4. Storage: Lưu trữ file nén mã nguồn .html.gz và tệp metadata chuẩn .json vào crawl_data/.
+4. Storage: Lưu trữ file nén mã nguồn .html.gz + json metadata local và tự động ghi vào DB (bảng rawdata & raw_articles).
 """
 
 from __future__ import annotations
@@ -15,6 +15,14 @@ import random
 import sys
 import time
 from datetime import datetime
+from pathlib import Path
+
+# Đảm bảo import được các module gốc của dự án như `database`
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+if str(PROJECT_ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -48,11 +56,6 @@ def parse_args() -> argparse.Namespace:
         help="Số lượng bài viết tối đa cần khám phá cho mỗi nguồn (mặc định: 10).",
     )
     parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Chỉ chạy bước Discovery (RSS/API) để xem danh sách bài mới, không tải HTML hay ghi đĩa.",
-    )
-    parser.add_argument(
         "--force",
         action="store_true",
         help="Bỏ qua bộ lọc trùng lặp, ép buộc cào lại bài viết dù đã lưu trữ trước đó.",
@@ -68,15 +71,40 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Chạy toàn bộ các nguồn đã được đăng ký trong hệ thống.",
     )
+    parser.add_argument(
+        "--save-db",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Tự động kết nối và lưu dữ liệu cào vào cơ sở dữ liệu PostgreSQL (mặc định: True).",
+    )
+    parser.add_argument(
+        "--from-db",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Lấy danh sách các nguồn cào trực tiếp từ cơ sở dữ liệu PostgreSQL (mặc định: True).",
+    )
+    parser.add_argument(
+        "--save-local",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Lưu bản sao dữ liệu thô (.html.gz và .json) vào thư mục local crawl_data/ (mặc định: False).",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Chỉ thực hiện khám phá bài viết (Discovery), không cào nội dung chi tiết.",
+    )
     return parser.parse_args()
 
 
 def process_source(
     source_name: str,
-    limit: int,
-    dry_run: bool,
-    force: bool,
-    delay: float,
+    limit: int = 10,
+    force: bool = False,
+    delay: float = 1.5,
+    dry_run: bool = False,
+    save_db: bool = False,
+    save_local: bool = False,
 ) -> dict[str, int]:
     """Thực thi thu thập cho một nguồn báo cụ thể."""
     config = registry.get_config_by_name(source_name)
@@ -97,17 +125,16 @@ def process_source(
 
     print(f"🔍 [Stage 1 - Discovery] Tìm thấy {len(discovered_items)} bài viết ({elapsed_disc:.2f}s)")
 
-    if dry_run:
-        print("\n--- [CHẾ ĐỘ DRY-RUN: DANH SÁCH BÀI VIẾT KHÁM PHÁ] ---")
-        for idx, item in enumerate(discovered_items, 1):
-            pub = item.published_at or "Không rõ ngày"
-            print(f"  {idx:02d}. [{pub}] {item.title or 'Không tiêu đề'}")
-            print(f"      URL: {item.url}")
-            if item.summary:
-                print(f"      Tóm tắt: {item.summary[:120]}...")
-        return {"discovered": len(discovered_items), "skipped": 0, "success": 0, "failed": 0}
+    # Nạp danh sách bài đã cào sẵn trong DB bằng 1 query duy nhất (Batch URL Check)
+    existing_db_urls: set[str] = set()
+    if not force and discovered_items:
+        try:
+            from database.operations import get_existing_urls
+            urls_to_check = [item.url for item in discovered_items]
+            existing_db_urls = get_existing_urls(urls_to_check)
+        except Exception as check_err:
+            print(f"⚠️ Cảnh báo kiểm tra trùng lặp DB hàng loạt thất bại: {check_err}")
 
-    # Stage 2: Deduplication & Full-text Extraction
     stats = {
         "discovered": len(discovered_items),
         "skipped": 0,
@@ -115,16 +142,20 @@ def process_source(
         "failed": 0,
     }
 
-    for idx, item in enumerate(discovered_items, 1):
-        print(f"\n[{idx:02d}/{len(discovered_items):02d}] Xử lý: {item.title or item.url[:60]}")
+    if dry_run:
+        print("ℹ️ Chế độ Dry-Run bật: Bỏ qua giai đoạn Stage 2 (Extraction & Save DB).")
+        return stats
 
-        # Kiểm tra trùng lặp trước khi gửi request tải trang
-        if not force:
-            existing = find_existing_artifact(item.url, config.source_name)
-            if existing:
-                print(f"   ⏩ BỎ QUA (Đã cào trước đó lúc {existing.get('fetched_at')})")
-                stats["skipped"] += 1
-                continue
+    # Stage 2: Deduplication & Full-text Extraction
+    for idx, item in enumerate(discovered_items, 1):
+        clean_url = item.url.strip()
+        print(f"\n[{idx:02d}/{len(discovered_items):02d}] Xử lý: {item.title or clean_url[:60]}")
+
+        # 1. Kiểm tra trùng lặp qua Database (bảng raw_articles)
+        if not force and clean_url in existing_db_urls:
+            print(f"   ⏩ BỎ QUA (Đã tồn tại trong Database `raw_articles`)")
+            stats["skipped"] += 1
+            continue
 
         # Jitter delay lịch sự giữa các request cào HTML
         if delay > 0:
@@ -143,16 +174,27 @@ def process_source(
                 fallback_published_at=item.published_at,
                 fallback_author=item.author,
                 fallback_thumbnail=item.thumbnail_url,
+                save_local=save_local,
             )
             status = result.get("crawl_status")
+
+            if save_db:
+                try:
+                    from database.operations import save_crawl_result_to_db
+                    db_res = save_crawl_result_to_db(result)
+                    result["db_saved"] = db_res
+                except Exception as db_err:
+                    print(f"   ⚠️ Lỗi lưu Database: {db_err}")
+
             if status == "SUCCESS":
                 stats["success"] += 1
-                words = len((result.get("content") or "").split())
+                content_str = str(result.get("content_raw") or result.get("content") or "")
+                words = len(content_str.split())
                 print(f"   ✅ CÀO THÀNH CÔNG! ({words} từ, Tác giả: {result.get('author') or 'N/A'})")
-                print(f"      File lưu: {result.get('raw_html_path')}")
             else:
                 stats["failed"] += 1
                 print(f"   ⚠️ TRẠNG THÁI: {status} ({result.get('error') or 'Không rõ nguyên nhân'})")
+
         except Exception as exc:
             stats["failed"] += 1
             print(f"   ❌ LỖI NGOẠI LỆ: {exc}")
@@ -160,30 +202,42 @@ def process_source(
     return stats
 
 
-def main() -> None:
-    """Điểm khởi chạy chính."""
-    args = parse_args()
+def run_news_collector(
+    source: str | None = None,
+    channel_type: str = "all",
+    limit: int = 10,
+    force: bool = False,
+    delay: float = 1.5,
+    dry_run: bool = False,
+    save_db: bool = True,
+    from_db: bool = True,
+    save_local: bool = False,
+    all_sources: bool = False,
+) -> dict[str, int]:
+    """Hàm Python API điều phối luồng thu thập tin tức tự động (có thể import và gọi từ Airflow hoặc script khác)."""
+    if from_db: # Nạp cấu hình nguồn từ PostgreSQL DB 
+        registry.load_from_db()
+
     all_configs = registry.get_all_configs() if hasattr(registry, "get_all_configs") else registry._configs
 
     target_sources: list[str] = []
-    if args.source:
-        target_sources = [args.source.lower().strip()]
-    elif args.all:
+    if source:
+        target_sources = [source.lower().strip()]
+    elif all_sources:
         target_sources = list(all_configs.keys())
     else:
-        # Nếu không chỉ định, lọc theo --type
         for name, cfg in all_configs.items():
-            if args.type == "all" or cfg.channel_type == args.type:
+            if channel_type == "all" or cfg.channel_type == channel_type:
                 target_sources.append(name)
 
     if not target_sources:
         print("⚠️ Không có nguồn nào phù hợp với bộ lọc chỉ định.")
         print(f"Các nguồn khả dụng hiện có: {list(all_configs.keys())}")
-        sys.exit(1)
+        return {"discovered": 0, "skipped": 0, "success": 0, "failed": 0}
 
     print(f"\n🚀 KHỞI ĐỘNG HỆ THỐNG THU THẬP TIN TỨC ĐA NGUỒN")
-    print(f"   Danh sách nguồn thực thi ({len(target_sources)}): {target_sources}")
-    print(f"   Chế độ Dry-Run: {'BẬT' if args.dry_run else 'TẮT'} | Ép cào lại (--force): {'BẬT' if args.force else 'TẮT'}")
+    print(f"   Nạp nguồn từ DB: {'BẬT' if from_db else 'TẮT'} | Danh sách thực thi ({len(target_sources)}): {target_sources}")
+    print(f"   Chế độ Dry-Run: {'BẬT' if dry_run else 'TẮT'} | Ép cào lại (--force): {'BẬT' if force else 'TẮT'} | Lưu DB: {'BẬT' if save_db else 'TẮT'} | Lưu Local: {'BẬT' if save_local else 'TẮT'}")
 
     total_stats = {"discovered": 0, "skipped": 0, "success": 0, "failed": 0}
     start_total = time.time()
@@ -191,10 +245,12 @@ def main() -> None:
     for src in target_sources:
         source_stat = process_source(
             source_name=src,
-            limit=args.limit,
-            dry_run=args.dry_run,
-            force=args.force,
-            delay=args.delay,
+            limit=limit,
+            dry_run=dry_run,
+            force=force,
+            delay=delay,
+            save_db=save_db,
+            save_local=save_local,
         )
         for key in total_stats:
             total_stats[key] += source_stat[key]
@@ -204,12 +260,31 @@ def main() -> None:
     print(f"📊 BÁO CÁO TỔNG HỢP KẾT QUẢ THU THẬP TIN TỨC")
     print(f"{'='*70}")
     print(f"   - Tổng số bài phát hiện (Discovered): {total_stats['discovered']}")
-    if not args.dry_run:
+    if not dry_run:
         print(f"   - Bỏ qua do trùng lặp (Skipped):     {total_stats['skipped']}")
         print(f"   - Bóc tách thành công (Success):     {total_stats['success']}")
         print(f"   - Cào thất bại / Lỗi (Failed):       {total_stats['failed']}")
     print(f"   - Tổng thời gian thực thi:           {total_elapsed:.2f} giây")
     print(f"{'='*70}\n")
+
+    return total_stats
+
+
+def main() -> None:
+    """Điểm khởi chạy chính từ dòng lệnh (CLI)."""
+    args = parse_args()
+    run_news_collector(
+        source=args.source,
+        channel_type=args.type,
+        limit=args.limit,
+        force=args.force,
+        delay=args.delay,
+        dry_run=args.dry_run,
+        save_db=args.save_db,
+        from_db=args.from_db,
+        save_local=args.save_local,
+        all_sources=args.all,
+    )
 
 
 if __name__ == "__main__":
