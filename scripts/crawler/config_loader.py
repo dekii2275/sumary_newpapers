@@ -45,8 +45,13 @@ class SelectorConfig(BaseModel):
 class CleanRulesConfig(BaseModel):
     """Quy tắc loại bỏ các phần tử HTML rác trước khi trích xuất văn bản."""
     strip_elements: list[str] = Field(
-        default_factory=lambda: ["script", "style", ".ads", ".banner"],
-        description="Danh sách các selector phần tử cần xóa bỏ khỏi DOM (quảng cáo, script, style...)"
+        default_factory=lambda: [
+            "script", "style", "iframe", "form", "button",
+            ".ads", ".banner", ".comment", ".box-comment", ".zone-comment",
+            "#comment", "#box-comment", ".form-comment", ".comment-box",
+            "footer", "header", "nav"
+        ],
+        description="Danh sách các selector phần tử cần xóa bỏ khỏi DOM (quảng cáo, script, style, bình luận...)"
     )
 
 

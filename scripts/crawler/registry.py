@@ -33,6 +33,59 @@ class SourceRegistry:
                 # Lưu tên miền chữ thường để tra cứu không phân biệt hoa thường
                 self._domain_to_source[domain.lower().strip()] = source_name
 
+    def load_from_db(self, database_url: str | None = None) -> dict[str, SourceConfig]:
+        """Nạp danh sách các nguồn hoạt động từ PostgreSQL Database (bảng sources)."""
+        try:
+            from database.operations import get_active_sources_from_db
+            db_sources = get_active_sources_from_db(database_url=database_url)
+        except Exception as e:
+            print(f"⚠️ Cảnh báo: Không thể nạp nguồn từ Database: {e}")
+            return self._configs
+
+        db_configs: dict[str, SourceConfig] = {}
+        for row in db_sources:
+            s_name = row["name"].lower().strip()
+            s_url = row.get("url") or ""
+            s_type = (row.get("source_type") or "").lower()
+
+            parsed = urlparse(s_url)
+            domain = parsed.netloc.lower().strip()
+
+            if s_type == "rss" or s_url.endswith(".rss") or ".rss" in s_url or "rss" in s_url:
+                channel_type = "rss"
+            elif s_type == "api":
+                channel_type = "api"
+            else:
+                channel_type = "html"
+
+            existing_cfg = self._configs.get(s_name)
+            if existing_cfg:
+                existing_cfg.source_id = row["id"]
+                if channel_type == "rss" and s_url and s_url not in existing_cfg.rss_feeds:
+                    existing_cfg.rss_feeds.append(s_url)
+                elif channel_type == "html" and s_url and s_url not in existing_cfg.listing_urls:
+                    existing_cfg.listing_urls.append(s_url)
+                if domain and domain not in existing_cfg.domains:
+                    existing_cfg.domains.append(domain)
+                db_configs[s_name] = existing_cfg
+            else:
+                cfg = SourceConfig(
+                    source_id=row["id"],
+                    source_name=s_name,
+                    display_name=row["name"].capitalize(),
+                    channel_type=channel_type,
+                    domains=[domain] if domain else [],
+                    rss_feeds=[s_url] if channel_type == "rss" and s_url else [],
+                    listing_urls=[s_url] if channel_type == "html" and s_url else [],
+                )
+                db_configs[s_name] = cfg
+
+            if domain:
+                self._domain_to_source[domain] = s_name
+
+        self._configs.update(db_configs)
+        return self._configs
+
     def get_all_configs(self) -> dict[str, SourceConfig]:
         """Lấy toàn bộ các cấu hình nguồn đã đăng ký."""
         return self._configs

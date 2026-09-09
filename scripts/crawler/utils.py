@@ -45,7 +45,7 @@ def normalize_url(url: str) -> str:
 
 
 def clean_text(value: str | None) -> str | None:
-    """Chuẩn hóa chuỗi văn bản: thu gọn khoảng trắng thừa và cắt bỏ khoảng trắng ở 2 đầu.
+    """Chuẩn hóa chuỗi văn bản: loại bỏ hoàn toàn các ký tự xuống dòng (\n, \r), thu gọn khoảng trắng thừa và cắt bỏ khoảng trắng ở 2 đầu.
     
     Args:
         value: Chuỗi văn bản thô hoặc None.
@@ -55,6 +55,8 @@ def clean_text(value: str | None) -> str | None:
     """
     if not value:
         return None
+    # Loại bỏ ký tự xuống dòng (\n, \r) và chuẩn hóa khoảng trắng
+    value = value.replace("\r", " ").replace("\n", " ")
     value = re.sub(r"\s+", " ", value).strip()
     return value or None
 
@@ -83,111 +85,56 @@ def save_artifacts(
     error: str | None = None,
     discovery_method: str = "direct",
     discovery_metadata: dict[str, object] | None = None,
+    save_local: bool = False,
 ) -> dict[str, object]:
-    """Nén lưu mã nguồn HTML thô dạng Gzip (.html.gz) và lưu metadata JSON vào thư mục crawl_data/.
-    
-    Cấu trúc thư mục tạo ra:
-    - crawl_data/raw/<source_name>/<YYYY>/<MM>/<DD>/<crawl_id>.html.gz
-    - crawl_data/metadata/<source_name>/<YYYY>/<MM>/<DD>/<crawl_id>.json
-    
-    Args:
-        html: Nội dung HTML thô của trang.
-        source_name: Tên định danh nguồn báo.
-        url: URL bài viết ban đầu.
-        final_url: URL cuối cùng sau khi chuyển hướng.
-        fetched_at: Thời điểm tải trang.
-        article: Từ điển chứa các trường metadata đã bóc tách (title, author, content, published_at, thumbnail_url...).
-        http_status: Mã phản hồi HTTP (nếu có).
-        crawl_status: Trạng thái cào ('SUCCESS', 'CONTENT_NOT_FOUND', 'EMPTY_HTML', 'TIMEOUT', 'BLOCKED', 'ERROR').
-        error: Thông báo lỗi (nếu có).
-        discovery_method: Phương thức khám phá ('rss', 'api', 'listing', 'direct').
-        discovery_metadata: Dữ liệu bổ trợ ban đầu thu thập từ RSS hoặc API.
-        
-    Returns:
-        dict[str, object]: Dữ liệu metadata hoàn chỉnh đã được lưu trữ.
-    """
-    date_path = fetched_at.astimezone().strftime("%Y/%m/%d")
-    crawl_id = f"{url_hash(url)}_{fetched_at.strftime('%H%M%S_%f')}"
-    raw_path = OUTPUT_ROOT / "raw" / source_name / date_path / f"{crawl_id}.html.gz"
-    metadata_path = (
-        OUTPUT_ROOT / "metadata" / source_name / date_path / f"{crawl_id}.json"
-    )
+    """Tạo đối tượng metadata bài viết đã bóc tách. Chỉ lưu file local nếu save_local=True (mặc định: False)."""
+    raw_title = article.get("title") or article.get("title_raw")
+    raw_content = article.get("content") or article.get("content_raw")
 
-    # Đảm bảo các thư mục cha tồn tại
-    raw_path.parent.mkdir(parents=True, exist_ok=True)
-    metadata_path.parent.mkdir(parents=True, exist_ok=True)
-
-    raw_html_path = None
-    if html and html.strip():
-        # Ghi nén file HTML thô (.html.gz)
-        with gzip.open(raw_path, "wt", encoding="utf-8") as file:
-            file.write(html)
-        try:
-            raw_html_path = raw_path.relative_to(PROJECT_ROOT).as_posix()
-        except ValueError:
-            raw_html_path = raw_path.as_posix()
-
-
-    # Tạo bản ghi metadata theo chuẩn định dạng JSON
     metadata = {
         "source": source_name,
-        "url": url,
-        "final_url": final_url or url,
-        "canonical_url": article.get("canonical_url"),
-        "title": article.get("title"),
-        "author": article.get("author"),
+        "canonical_article_id": article.get("canonical_article_id"),
+        "external_url": final_url or url,
+        "title_raw": clean_text(raw_title if isinstance(raw_title, str) else None),
+        "content_raw": clean_text(raw_content if isinstance(raw_content, str) else None),
+        "author": clean_text(str(article["author"])) if article.get("author") else None,
         "published_at": article.get("published_at"),
-        "content": article.get("content"),
-        "thumbnail_url": article.get("thumbnail_url"),
-        "raw_html_path": raw_html_path,
-        "http_status": http_status,
+        "collected_at": fetched_at.isoformat(),
         "crawl_status": crawl_status,
-        "discovery_method": discovery_method,
-        "discovery_metadata": discovery_metadata or {},
-        "quality_flags": article.get("quality_flags") or [],
-        "fetched_at": fetched_at.isoformat(),
-        "error": error,
+        "url": url,
     }
 
-    # Ghi file metadata JSON
-    metadata_path.write_text(
-        json.dumps(metadata, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    
+    if save_local:
+        try:
+            date_path = fetched_at.astimezone().strftime("%Y/%m/%d")
+            crawl_id = f"{url_hash(url)}_{fetched_at.strftime('%H%M%S_%f')}"
+            raw_path = OUTPUT_ROOT / "raw" / source_name / date_path / f"{crawl_id}.html.gz"
+            metadata_path = OUTPUT_ROOT / "metadata" / source_name / date_path / f"{crawl_id}.json"
+
+            raw_path.parent.mkdir(parents=True, exist_ok=True)
+            metadata_path.parent.mkdir(parents=True, exist_ok=True)
+
+            if html and html.strip():
+                with gzip.open(raw_path, "wt", encoding="utf-8") as file:
+                    file.write(html)
+
+            metadata_path.write_text(
+                json.dumps(metadata, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception as err:
+            print(f"   ⚠️ Cảnh báo save_local: Không thể ghi file local ({err}) - Tiếp tục luồng ghi DB.")
+
     return metadata
 
 
-
 def find_existing_artifact(url: str, source_name: str | None = None) -> dict[str, object] | None:
-    """Tìm kiếm xem bài viết với url_hash tương ứng đã từng được cào và lưu trữ hay chưa.
-    
-    Args:
-        url: URL bài viết cần kiểm tra.
-        source_name: Tên nguồn cào (nếu có để thu hẹp phạm vi tìm kiếm).
-        
-    Returns:
-        dict[str, object] | None: Nội dung JSON metadata đã cào trước đó hoặc None nếu chưa cào.
-    """
-    key = url_hash(url)
-    search_dir = OUTPUT_ROOT / "metadata"
-    if source_name:
-        specific_dir = search_dir / source_name
-        if specific_dir.exists():
-            search_dir = specific_dir
-
-    if not search_dir.exists():
-        return None
-
-    # Tìm các file metadata có chứa mã url_hash
-    matches = list(search_dir.glob(f"**/*{key}*.json"))
-    if matches:
-        # Lấy file mới nhất nếu có nhiều phiên bản
-        latest_file = max(matches, key=lambda f: f.stat().st_mtime)
-        try:
-            return json.loads(latest_file.read_text(encoding="utf-8"))
-        except Exception:
-            return None
-
+    """Kiểm tra bài viết đã từng tồn tại trong Database hay chưa (không kiểm tra local file)."""
+    try:
+        from database.operations import check_url_exists
+        if check_url_exists(url):
+            return {"url": url, "crawl_status": "SUCCESS", "skipped": True}
+    except Exception:
+        pass
     return None
 

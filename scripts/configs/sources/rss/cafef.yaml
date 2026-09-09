@@ -7,7 +7,6 @@ domains:
 
 rss_feeds:
   - "https://cafef.vn/tin-moi.rss"
-  - "https://cafef.vn/thi-truong-chung-khoan.rss"
 
 listing_urls:
   - "https://cafef.vn/thi-truong.chn"

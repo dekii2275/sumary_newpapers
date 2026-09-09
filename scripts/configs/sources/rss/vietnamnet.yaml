@@ -1,0 +1,39 @@
+source_id: 201
+source_name: "vietnamnet"
+display_name: "VietNamNet (Công Nghệ)"
+channel_type: "rss"
+domains:
+  - "vietnamnet.vn"
+
+rss_feeds:
+  - "https://vietnamnet.vn/rss/cong-nghe.rss"
+  
+fetcher:
+  type: "http"
+  timeout: 15
+
+parser:
+  type: "declarative"
+  selectors:
+    title:
+      - "h1.content-detail-title"
+      - "h1"
+      - "meta[property='og:title']@content"
+    author:
+      - ".author-name"
+      - ".article-author"
+    published_at:
+      - "meta[property='article:published_time']@content"
+      - ".bread-crumb-detail__time"
+    thumbnail_url:
+      - "meta[property='og:image']@content"
+    content_paragraphs:
+      - "#maincontent p"
+      - ".maincontent p"
+      - "article p"
+  clean_rules:
+    strip_elements:
+      - ".inner-article"
+      - ".article-relate"
+      - "script"
+      - "style"

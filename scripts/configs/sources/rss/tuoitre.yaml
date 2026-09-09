@@ -1,0 +1,57 @@
+source_id: 3
+source_name: "tuoitre"
+display_name: "Tuổi Trẻ Online"
+channel_type: "rss"
+domains:
+  - "tuoitre.vn"
+
+rss_feeds:
+  - "https://tuoitre.vn/rss/khoa-hoc.rss"
+  - "https://tuoitre.vn/rss/cong-nghe.rss"
+
+listing_urls:
+  - "https://tuoitre.vn/khoa-hoc.htm"
+  - "https://tuoitre.vn/cong-nghe.htm"
+
+fetcher:
+  type: "http"
+  timeout: 20
+
+parser:
+  type: "declarative"
+  selectors:
+    title:
+      - "h1.detail-title"
+      - "h1.title-detail"
+      - "h1"
+      - "meta[property='og:title']@content"
+    author:
+      - ".author-info"
+      - ".author-name"
+      - ".detail-author"
+    published_at:
+      - "meta[property='article:published_time']@content"
+      - "[data-role='publishdate']"
+      - ".detail-time"
+    thumbnail_url:
+      - "meta[property='og:image']@content"
+    content_paragraphs:
+      - "#main-detail-body p"
+      - ".detail-content p"
+      - "[data-role='content'] p"
+  clean_rules:
+    strip_elements:
+      - "script"
+      - "style"
+      - "iframe"
+      - "form"
+      - "button"
+      - ".comment"
+      - ".box-comment"
+      - ".zone-comment"
+      - "#comment"
+      - "#box-comment"
+      - ".form-comment"
+      - ".comment-box"
+      - ".relate-container"
+      - ".VoiSmart"

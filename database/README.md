@@ -13,7 +13,7 @@ database/
 ├── operations.py             # Các thao tác CRUD với bảng rawdata (insert_rawdata, query,...)
 ├── test_connection.py        # Script CLI kiểm tra kết nối CSDL và đọc số lượng bản ghi
 ├── init/
-│   └── 001_create_rawdata.sql # Script SQL khởi tạo bảng rawdata khi tạo container
+│   └── 001_create_database.sql # Script SQL khởi tạo database khi tạo container
 ├── migrations/
 │   └── 002_add_rawdata_payload_and_run.sql # Script migration bổ sung cột
 └── README.md                 # Tài liệu hướng dẫn này
@@ -29,19 +29,19 @@ Module tự động nhận diện kết nối thông qua biến môi trường:
 Ví dụ:
 ```bash
 # Khi chạy từ máy host (ngoài Docker)
-DATABASE_URL=postgresql://tech_admin:news_summary@localhost:15432/tech_news_db
+DATABASE_URL=postgresql://<user>:<password>@localhost:15432/<db_name>
 
 # Khi chạy bên trong container Docker (Airflow / Backend)
-DATABASE_URL=postgresql://tech_admin:news_summary@postgres:5432/tech_news_db
+DATABASE_URL=postgresql://<user>:<password>@postgres:5432/<db_name>
 ```
 
 ### 2. Dùng các biến môi trường riêng lẻ
 Nếu không đặt `DATABASE_URL`, module sẽ tự động ghép nối từ các biến:
-- `POSTGRES_USER` (mặc định: `tech_admin`)
-- `POSTGRES_PASSWORD` (mặc định: `news_summary`)
+- `POSTGRES_USER` (mặc định: `postgres`)
+- `POSTGRES_PASSWORD` (mặc định: `""`)
 - `POSTGRES_HOST` (mặc định: `localhost` khi chạy ngoài host, `postgres` trong container)
 - `POSTGRES_PORT` (mặc định: `15432` ngoài host, `5432` trong container)
-- `POSTGRES_DB` (mặc định: `tech_news_db`)
+- `POSTGRES_DB` (mặc định: `postgres`)
 
 ---
 
@@ -71,29 +71,28 @@ from database import get_connection
 
 with get_connection() as conn:
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM rawdata;")
+    cursor.execute("SELECT COUNT(*) FROM raw_articles;")
     count = cursor.fetchone()[0]
     print(f"Tổng số bản ghi: {count}")
     cursor.close()
 ```
 
-#### B. Chèn dữ liệu bài cào vào bảng `rawdata`
+#### B. Chèn dữ liệu bài cào vào bảng `raw_articles`
 ```python
-from database import insert_rawdata
+from database import insert_raw_article
 
 record = {
-    "source_id": 1,
-    "url": "https://vnexpress.net/bai-viet-mau-123.html",
-    "final_url": "https://vnexpress.net/bai-viet-mau-123.html",
-    "http_status": 200,
-    "raw_object_key": "crawl_data/raw/vnexpress/2026/09/05/abc.html.gz",
-    "raw_payload_type": "text/html",
-    "raw_content_hash": "sha256_hash_here",
+    "source": "vnexpress",
+    "external_url": "https://vnexpress.net/bai-viet-mau-123.html",
+    "title_raw": "Tiêu đề bài viết mẫu",
+    "content_raw": "Nội dung bài viết...",
+    "author": "Nguyễn Văn A",
+    "published_at": "2026-09-08T10:00:00Z",
     "status": "SUCCESS",
 }
 
-new_id = insert_rawdata(record)
-print(f"Đã lưu vào rawdata với ID: {new_id}")
+new_id = insert_raw_article(record)
+print(f"Đã lưu vào raw_articles với ID: {new_id}")
 ```
 
 #### C. Kiểm tra bài viết đã được cào chưa (Deduplication)
@@ -102,15 +101,6 @@ from database import check_url_exists
 
 if check_url_exists("https://vnexpress.net/bai-viet-mau-123.html"):
     print("Bài viết đã tồn tại trong database, bỏ qua.")
-```
-
-#### D. Lấy các bài báo mới cào gần nhất
-```python
-from database import get_latest_rawdata
-
-articles = get_latest_rawdata(limit=5)
-for article in articles:
-    print(article["id"], article["url"], article["status"])
 ```
 
 ---

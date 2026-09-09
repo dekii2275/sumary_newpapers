@@ -141,7 +141,7 @@ class GenericParser(BaseParser):
             if (text := clean_text(paragraph.get_text(" ", strip=True)))
         ]
 
-        content = "\n\n".join(content_parts) or None
+        content = clean_text(" ".join(content_parts)) or None
 
         # 5. Tầng 4: Heuristic Auto Fallback (Trafilatura) nếu không khớp CSS Selector nào
         if not content:

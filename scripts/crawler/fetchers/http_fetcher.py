@@ -62,7 +62,9 @@ class HttpFetcher(BaseFetcher):
                 "Upgrade-Insecure-Requests": "1",
             }
             resp = session.get(url, headers=headers, timeout=self.timeout)
-            resp.encoding = resp.apparent_encoding or "utf-8"
+            # Đảm bảo mã hóa UTF-8 cho các trang tin tức Việt Nam, tránh apparent_encoding đoán sai sang MacRoman/ISO-8859-1
+            if not resp.encoding or resp.encoding.lower() in ("iso-8859-1", "us-ascii"):
+                resp.encoding = "utf-8"
             return {
                 "final_url": resp.url,
                 "html": resp.text,
